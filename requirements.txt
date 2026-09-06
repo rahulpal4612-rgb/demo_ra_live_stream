@@ -1,0 +1,16 @@
+pypdf
+pdf2image
+pytesseract
+Pillow
+pikepdf
+langchain-text-splitters
+transformers
+faiss-cpu
+sentence-transformers
+tavily-python
+beautifulsoup4
+requests
+python-dotenv
+validators
+notion-client==3.1.0
+groq
