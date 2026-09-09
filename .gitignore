@@ -17,3 +17,5 @@ failures.log
 # OS files
 .DS_Store
 Thumbs.db
+
+wikipedia_debug.html
