@@ -1,3 +1,4 @@
+
 import os
 import json
 import numpy as np
@@ -39,6 +40,7 @@ def load_store() -> tuple[faiss.Index, list, list]:
 
 def save_store(index: faiss.Index, metadata_list: list, texts_list: list):
     os.makedirs(STORE_DIR, exist_ok=True)
+
     faiss.write_index(index, FAISS_PATH)
 
     with open(METADATA_PATH, "w") as f:
@@ -71,11 +73,22 @@ def delete_by_doc_id(
 
     if keep_indices:
         # reconstruct vectors from old index for kept chunks
-        all_vectors = np.zeros((index.ntotal, EMBEDDING_DIM), dtype=np.float32)
-        for i in range(index.ntotal):
-            all_vectors[i] = faiss.rev_swig_ptr(index.get_xb(), index.ntotal * EMBEDDING_DIM)[i]
+        all_vectors = np.zeros(
+            (index.ntotal, EMBEDDING_DIM),
+            dtype=np.float32
+        )
 
-        kept_vectors = np.array([all_vectors[i] for i in keep_indices], dtype=np.float32)
+        for i in range(index.ntotal):
+            all_vectors[i] = faiss.rev_swig_ptr(
+                index.get_xb(),
+                index.ntotal * EMBEDDING_DIM
+            )[i * EMBEDDING_DIM:(i + 1) * EMBEDDING_DIM]
+
+        kept_vectors = np.array(
+            [all_vectors[i] for i in keep_indices],
+            dtype=np.float32
+        )
+
         new_index.add(kept_vectors)
         new_metadata = [metadata_list[i] for i in keep_indices]
         new_texts = [texts_list[i] for i in keep_indices]
@@ -94,21 +107,35 @@ def upsert_chunks(chunks: list[dict]):
 
     # group incoming chunks by doc_id — delete old entries for any doc being re-ingested
     doc_ids_seen = set(chunk["metadata"]["doc_id"] for chunk in chunks)
+
     for doc_id in doc_ids_seen:
         existing_ids = {m.get("doc_id") for m in metadata_list}
+
         if doc_id in existing_ids:
-            print(f"🔄 Re-ingesting doc_id {doc_id[:8]}... deleting old chunks.")
-            index, metadata_list, texts_list = delete_by_doc_id(doc_id, index, metadata_list, texts_list)
+            print(
+                f"🔄 Re-ingesting doc_id {doc_id[:8]}... deleting old chunks."
+            )
+
+            index, metadata_list, texts_list = delete_by_doc_id(
+                doc_id,
+                index,
+                metadata_list,
+                texts_list
+            )
 
     # add new chunks
     vectors = []
+
     for chunk in chunks:
         embedding = chunk.get("embedding")
         text = chunk.get("text", "")
         metadata = chunk.get("metadata", {})
 
         if embedding is None:
-            print(f"⚠️ Chunk missing embedding, skipping: {metadata.get('chunk_id', 'unknown')}")
+            print(
+                f"⚠️ Chunk missing embedding, skipping: "
+                f"{metadata.get('chunk_id', 'unknown')}"
+            )
             continue
 
         vectors.append(embedding)
@@ -117,17 +144,26 @@ def upsert_chunks(chunks: list[dict]):
 
     if vectors:
         vectors_np = np.array(vectors, dtype=np.float32)
+
         # normalize for cosine similarity via inner product
         faiss.normalize_L2(vectors_np)
         index.add(vectors_np)
 
     save_store(index, metadata_list, texts_list)
-    print(f"✅ Upserted {len(vectors)} chunks into store. Total: {index.ntotal}")
+
+    print(
+        f"✅ Upserted {len(vectors)} chunks into store. "
+        f"Total: {index.ntotal}"
+    )
 
 
 # ─── Search ───────────────────────────────────────────────────────────────────
 
-def search(query_vector: list, top_k: int = 5) -> list[dict]:
+def search(
+    query_vector: list,
+    top_k: int = 5,
+    source_paths: list[str] | None = None
+) -> list[dict]:
     index, metadata_list, texts_list = load_store()
 
     if index.ntotal == 0:
@@ -138,16 +174,11 @@ def search(query_vector: list, top_k: int = 5) -> list[dict]:
     faiss.normalize_L2(query_np)
 
     # Search more candidates so expired chunks can be filtered out
-    candidate_k = min(index.ntotal, top_k * 10)
+    if source_paths:
+     candidate_k = index.ntotal
+    else:
+     candidate_k = min(index.ntotal, top_k * 10)
     scores, indices = index.search(query_np, candidate_k)
-    print("\n🔎 NOTION VECTOR CHECK")
-
-    v5 = index.reconstruct(5)
-    v6 = index.reconstruct(6)
-
-    print("Vector 5 first 10:", v5[:10])
-    print("Vector 6 first 10:", v6[:10])
-    print("Vectors identical:", np.array_equal(v5, v6))
 
     results = []
     now = datetime.now()
@@ -157,6 +188,8 @@ def search(query_vector: list, top_k: int = 5) -> list[dict]:
             continue
 
         metadata = metadata_list[idx]
+        if source_paths and metadata.get("source_path") not in source_paths:
+            continue
 
         # Ignore expired web documents
         if metadata.get("source_type") == "web":

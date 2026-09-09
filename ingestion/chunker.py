@@ -1,9 +1,9 @@
 import re
 from ingestion.utils import count_tokens, TOKENIZER
 
-CHUNK_SIZE = 350       
-CHUNK_OVERLAP = 50      
-MIN_CHUNK_SIZE = 50     
+CHUNK_SIZE=150
+CHUNK_OVERLAP=30
+MIN_CHUNK_SIZE=50    
 
 
 def count_tokens(text: str) -> int:

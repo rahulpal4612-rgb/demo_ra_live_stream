@@ -1,5 +1,6 @@
-from sentence_transformers import SentenceTransformer
 import time
+from sentence_transformers import SentenceTransformer
+from ingestion.utils import count_tokens
 
 embedding_model = SentenceTransformer('all-mpnet-base-v2')
 BATCH_SIZE = 32
@@ -8,6 +9,7 @@ BATCH_SIZE = 32
 def encode_batch_with_retry(texts: list[str], delay=2, max_tries=3) -> list | None:
     for attempt in range(1, max_tries + 1):
         try:
+            print(f"🧪 TOTAL TEXT TOKENS IN BATCH: {sum(count_tokens(t) for t in texts)}")
             vectors = embedding_model.encode(texts, show_progress_bar=False)
             return vectors
         except Exception as e:
@@ -31,21 +33,14 @@ def embedder(chunks: list[dict]) -> list[dict]:
     for start in range(0, len(chunks), BATCH_SIZE):
         batch = chunks[start : start + BATCH_SIZE]
         texts = [c["text"] for c in batch]
-
         for i, text in enumerate(texts):
-            token_count = len(
-                embedding_model.tokenizer.encode(
-                    text, add_special_tokens=False
-                )
-            )
-
-            if token_count > 512:
-                print(f"🚨 OVERSIZED CHUNK: {token_count} tokens")
-                print(f"Chunk index: {start + i}")
-                print(f"Text preview: {text[:500]}")
+          token_count = len(text.split())
+          if token_count > 500:
+              print(f"⚠️ LARGE CHUNK: batch={start}, item={i}, tokens={token_count}")
 
         vectors = encode_batch_with_retry(texts)
 
+        # Handle failed embeddings safely inside the loop
         if vectors is None:
             failed_indices.extend(range(start, start + len(batch)))
             continue

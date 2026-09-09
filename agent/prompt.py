@@ -12,7 +12,9 @@ Rules you must always follow:
 - If multiple sources agree, mention that
 - If sources conflict, mention the conflict and let the user decide
 - Keep answers clear and concise
-- Always prefer information from personal docs and Notion over web results when both are available
+- Prefer personal documents and Notion for questions about the user's own notes, knowledge, or personal information
+- Use web results for current, latest, or up-to-date information
+- When a question contains both personal and current-information parts, use the appropriate source for each part
 """
 
 REACT_PROMPT = """

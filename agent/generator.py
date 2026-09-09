@@ -1,6 +1,9 @@
 import os
 from dotenv import load_dotenv
 from groq import Groq
+from ingestion.utils import count_tokens, TOKENIZER
+import random
+
 from agent.prompt import (
     SYSTEM_PROMPT,
     REACT_PROMPT,
@@ -14,6 +17,7 @@ from agent.prompt import (
 load_dotenv()
 
 client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+MAX_CONTEXT_TOKENS = 6428
 
 
 def format_chunks(chunks: list[dict]) -> str:
@@ -57,6 +61,35 @@ def extract_sources(chunks: list[dict]) -> list[str]:
         f"[{i+1}] {source}"
         for i, source in enumerate(sources)
     ]
+
+def limit_chunks_by_tokens(
+    chunks: list[dict],
+    history: str,
+    query: str,
+    max_tokens: int
+) -> list[dict]:
+    if not chunks:
+        return []
+
+    selected = []
+
+    for chunk in chunks:
+        test_chunks = selected + [chunk]
+
+        formatted = format_chunks(test_chunks)
+
+        test_context = CONTEXT_PROMPT.format(
+            chunks=formatted,
+            history=history if history else "No previous conversation.",
+            query=query
+        )
+
+        if count_tokens(test_context) > max_tokens:
+            break
+
+        selected.append(chunk)
+
+    return selected
 
 
 def generate(query: str, chunks: list[dict], history: str, action: str = "") -> dict:
@@ -105,14 +138,37 @@ If the history genuinely does not contain enough information, say so honestly.
     if not chunks:
         return {"answer": NO_CONTEXT_PROMPT, "sources": []}
 
+    print(f"📦 Chunks before limiter: {len(chunks)}")
+    print("\n🧪 CHUNKS ACTUALLY SENT TO GENERATOR:")
+    for i, chunk in enumerate(chunks):
+      print(f"\n[{i+1}] score={chunk.get('score')}")
+      print(f"source={chunk.get('metadata', {}).get('source_path')}")
+      print(chunk.get('text', '')[:1000])
+
+
+    # Limit chunks only if the context becomes too large
+    chunks = limit_chunks_by_tokens(
+    chunks,
+    history,
+    query,
+    MAX_CONTEXT_TOKENS
+)
+    print(f"📦 Chunks after limiter: {len(chunks)}")
+
     # format chunks
     formatted_chunks = format_chunks(chunks)
+    print(f"📏 Formatted chunks characters: {len(formatted_chunks)}")
+
+  
 
     filled_context = CONTEXT_PROMPT.format(
         chunks=formatted_chunks,
         history=history if history else "No previous conversation.",
         query=query
     )
+    print(f"📏 Filled context characters: {len(filled_context)}")
+    print(f"📏 Filled context tokens: {count_tokens(filled_context)}")
+    print(f"📏 System prompt tokens: {count_tokens(SYSTEM_PROMPT + '\n' + REACT_PROMPT)}")
 
     response = client.chat.completions.create(
         model="qwen/qwen3.8-27b",
@@ -127,3 +183,4 @@ If the history genuinely does not contain enough information, say so honestly.
     sources = extract_sources(chunks)
 
     return {"answer": answer, "sources": sources}
+

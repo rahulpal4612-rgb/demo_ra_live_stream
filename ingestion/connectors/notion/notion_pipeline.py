@@ -81,3 +81,6 @@ def notion_pipeline():
             _ingest_cleaned(db_cleaned, ingested_pages)
 
     return ingested_pages
+
+if __name__ == "__main__":
+    notion_pipeline()

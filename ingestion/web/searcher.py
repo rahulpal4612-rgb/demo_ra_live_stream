@@ -11,6 +11,9 @@ tavily = TavilyClient(api_key=TAVILY_API_KEY)
 def search(query: str, depth: str = "basic") -> list[dict]:
     response = tavily.search(query=query, max_results=3, search_depth=depth)
     print("\n🔎 TAVILY RESULTS")
+    print("\n🧪 TAVILY SCORES:")
+    for r in response["results"]:
+     print(r["title"], "→", r["score"])
 
     for r in response["results"]:
      print("\nURL:", r["url"])

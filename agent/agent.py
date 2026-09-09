@@ -11,6 +11,7 @@ load_dotenv()
 memory = Memory()
 client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
+
 def is_relevant(query: str, chunks: list[dict]) -> bool:
     """
     Let LLM decide if retrieved chunks actually answer the query.
@@ -19,19 +20,22 @@ def is_relevant(query: str, chunks: list[dict]) -> bool:
     if not chunks:
         return False
 
-    # format top 3 chunks for LLM to evaluate
+    # format top 25 chunks for LLM to evaluate
     formatted = "\n\n".join([
-        f"[{i+1}] {c.get('text', '')[:300]}"
-        for i, c in enumerate(chunks[:5])
+        f"[{i+1}] {c.get('text', '')[:1000]}"
+        for i, c in enumerate(chunks[:25])
     ])
+    print("\n📝 PROMPT SENT TO RELEVANCE MODEL:")
+    print(formatted)
+
     print("\n🔎 CHUNKS SENT TO RELEVANCE MODEL")
 
-    for i, c in enumerate(chunks[:5]):
-     print(
-        f"[{i+1}] score={c.get('score')} "
-        f"source={c.get('metadata', {}).get('source_type')} "
-        f"text={c.get('text', '')[:500]}"
-    )
+    for i, c in enumerate(chunks[:25]):
+        print(
+            f"[{i+1}] score={c.get('score')} "
+            f"source={c.get('metadata', {}).get('source_type')} "
+            f"text={c.get('text', '')[:500]}"
+        )
 
     response = client.chat.completions.create(
         model="qwen/qwen3.8-27b",
@@ -51,7 +55,6 @@ Reply with ONLY: YES or NO"""
     answer = response.choices[0].message.content.strip().upper()
     print(f"🧠 Relevance model returned: {repr(answer)}")
     return answer == "YES"
-
 
 def build_contextualized_query(query: str, history: str) -> str:
     """
@@ -213,8 +216,7 @@ def decide_action(query: str, history: str, contextualized_query: str = None) ->
 
     # No history at all
     if not history:
-        if any(word in query.lower() for word in ["that", "it", "they", "more about", "tell me more"]):
-            return "CLARIFY"
+       
 
         return route_new_query(query, history)
 
@@ -284,11 +286,11 @@ def run(query: str) -> dict:
 
     elif action == "SEARCH_WEB":
         print("🌐 Searching web...")
-        web_pipeline(contextualized_query)
-        chunks = search_web_only(contextualized_query)
+        web_urls = web_pipeline(contextualized_query)
+        chunks = search_web_only(contextualized_query, source_paths=web_urls)
         print(f"🔎 Retrieved {len(chunks)} web chunks")
 
-        for i, chunk in enumerate(chunks[:5]):
+        for i, chunk in enumerate(chunks[:25]):
            print(f"\n--- Web Chunk {i+1} ---")
            print(f"Score: {chunk.get('score')}")
            print(f"Source: {chunk.get('source')}")
@@ -299,12 +301,25 @@ def run(query: str) -> dict:
             result = generate(query, chunks, history)
 
     else:  # SEARCH_BOTH
-        print("🔍 Searching all sources...")
-        chunks = retrieve(contextualized_query)
-        if not is_relevant(contextualized_query, chunks):
-            result = generate(query, [], history, action="not_found")
+     print("🔍 Searching all sources...")
+     chunks = retrieve(contextualized_query)
+
+     if is_relevant(contextualized_query, chunks):
+        result = generate(query, chunks, history)
+     else:
+        print("⚠️ Personal information is not enough. Searching web...")
+        web_urls = web_pipeline(contextualized_query)
+        web_chunks = search_web_only(
+    contextualized_query,
+    source_paths=web_urls
+)
+
+        combined_chunks = chunks + web_chunks
+
+        if combined_chunks:
+            result = generate(query, combined_chunks, history)
         else:
-            result = generate(query, chunks, history)
+            result = generate(query, [], history, action="not_found")
 
     # 8. add answer to memory
     memory.add_message("assistant", result["answer"])
