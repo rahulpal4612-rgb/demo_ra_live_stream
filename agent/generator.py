@@ -38,6 +38,22 @@ def format_chunks(chunks: list[dict]) -> str:
 
     return "\n\n".join(formatted)
 
+def format_memories(memories: list[dict]) -> str:
+    if not memories:
+        return "No permanent memories."
+
+    formatted = []
+
+    for memory in memories:
+        memory_type = memory.get("type", "unknown")
+        content = memory.get("content", "")
+
+        formatted.append(
+            f"- [{memory_type}] {content}"
+        )
+
+    return "\n".join(formatted)
+
 
 def extract_sources(chunks: list[dict]) -> list[str]:
     if not chunks:
@@ -66,7 +82,8 @@ def limit_chunks_by_tokens(
     chunks: list[dict],
     history: str,
     query: str,
-    max_tokens: int
+    max_tokens: int,
+    memories: list[dict] | None = None
 ) -> list[dict]:
     if not chunks:
         return []
@@ -80,6 +97,7 @@ def limit_chunks_by_tokens(
 
         test_context = CONTEXT_PROMPT.format(
             chunks=formatted,
+            memories=memories if memories else "No permanent memories.",
             history=history if history else "No previous conversation.",
             query=query
         )
@@ -92,7 +110,7 @@ def limit_chunks_by_tokens(
     return selected
 
 
-def generate(query: str, chunks: list[dict], history: str, action: str = "") -> dict:
+def generate(query: str, chunks: list[dict], history: str, action: str = "", memories: list[dict] | None = None) -> dict:
     if action == "history":
         response = client.chat.completions.create(
             model="qwen/qwen3.8-27b",
@@ -125,18 +143,14 @@ If the history genuinely does not contain enough information, say so honestly.
             "answer": response.choices[0].message.content,
             "sources": []
         }
-
-    if not chunks and action == "personal_not_found":
+    if not chunks and not memories:
+     if action == "personal_not_found":
         return {"answer": NO_PERSONAL_CONTEXT_PROMPT, "sources": []}
 
-    if not chunks and action == "web_not_found":
+     if action == "web_not_found":
         return {"answer": NO_WEB_CONTEXT_PROMPT, "sources": []}
 
-    if not chunks and action == "not_found":
-        return {"answer": NO_CONTEXT_PROMPT, "sources": []}
-
-    if not chunks:
-        return {"answer": NO_CONTEXT_PROMPT, "sources": []}
+     return {"answer": NO_CONTEXT_PROMPT, "sources": []}
 
     print(f"📦 Chunks before limiter: {len(chunks)}")
     print("\n🧪 CHUNKS ACTUALLY SENT TO GENERATOR:")
@@ -151,7 +165,8 @@ If the history genuinely does not contain enough information, say so honestly.
     chunks,
     history,
     query,
-    MAX_CONTEXT_TOKENS
+    MAX_CONTEXT_TOKENS,
+    memories
 )
     print(f"📦 Chunks after limiter: {len(chunks)}")
 
@@ -163,6 +178,7 @@ If the history genuinely does not contain enough information, say so honestly.
 
     filled_context = CONTEXT_PROMPT.format(
         chunks=formatted_chunks,
+        memories=format_memories(memories),
         history=history if history else "No previous conversation.",
         query=query
     )

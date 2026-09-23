@@ -5,6 +5,9 @@ from agent.memory import Memory
 from agent.generator import generate
 from ingestion.retriever import retrieve, search_personal_only,search_web_only
 from ingestion.web.web_pipeline import web_pipeline
+from memory.pipeline import process_memories
+from memory.retrieval import retrieve_memories,get_baseline_memories,get_relevant_memories
+from memory.pipeline import is_forget_request
 
 load_dotenv()
 
@@ -202,6 +205,40 @@ SEARCH_BOTH"""
     return action if action in valid else "SEARCH_BOTH"
 
 
+def can_memory_answer(query: str, memories: list[dict]) -> bool:
+    """
+    Decide whether the retrieved long-term memories alone
+    contain enough information to answer the user's question.
+    """
+    if not memories:
+        return False
+
+    response = client.chat.completions.create(
+        model="qwen/qwen3.8-27b",
+        messages=[{
+            "role": "user",
+            "content": f"""You are checking whether long-term memory can answer a user's question.
+
+User question:
+"{query}"
+
+Long-term memories:
+{memories}
+
+Can these memories alone provide a complete and useful answer?
+
+Reply with ONLY:
+YES
+or
+NO"""
+        }],
+        max_tokens=5
+    )
+
+    answer = response.choices[0].message.content.strip().upper()
+    return answer == "YES"
+
+
 def decide_action(query: str, history: str, contextualized_query: str = None) -> str:
     """
     Decide whether this is:
@@ -242,14 +279,31 @@ def decide_action(query: str, history: str, contextualized_query: str = None) ->
 def run(query: str) -> dict:
     history = memory.get_history_as_text()
 
+    if is_forget_request([{"role": "user", "content": query}]):
+       process_memories([{"role": "user", "content": query}])
+
+       result = {
+        "answer": "Understood. I have removed that memory.",
+        "sources": []
+    }
+
+       print("\n💬 Answer:")
+       print(result["answer"])
+       print()
+
+       return result
+
+
     # 2. Decide action using previous history
     contextualized_query = build_contextualized_query(query, history)
+    memories = retrieve_memories(contextualized_query)
     print(f"🔎 Searching for: {contextualized_query}")
 
-# 3. Decide action
-# Original query is used for follow-up detection.
-# Contextualized query is used for routing.
-    action = decide_action(query, history, contextualized_query)
+    if can_memory_answer(query, memories):
+     action = "ANSWER_FROM_MEMORY"
+    else:
+     action = decide_action(query, history, contextualized_query)
+
     print(f"🧠 Action: {action}")
 
 # 4. Add current user question to memory
@@ -258,8 +312,19 @@ def run(query: str) -> dict:
 # 5. Summarize if history is too long
     memory.summarize_if_needed()
 
+    if action == "ANSWER_FROM_MEMORY":
+     chunks = []
+     result = generate(
+        query,
+        chunks,
+        history,
+        action="memory",
+        memories=memories
+    )
+
+
     # 6. handle CLARIFY
-    if action == "CLARIFY":
+    elif action == "CLARIFY":
         result = {
             "answer": "Could you clarify what you're referring to? I don't have enough context to understand your question.",
             "sources": []
@@ -270,19 +335,19 @@ def run(query: str) -> dict:
 
 
     # 7. route based on action
-    if action == "ANSWER_FROM_HISTORY":
+    elif action == "ANSWER_FROM_HISTORY":
         print("💭 Answering from conversation history...")
         chunks = []
-        result = generate(query, chunks, history, action="history")
+        result = generate(query, chunks, history, action="history",memories=memories)
 
     elif action == "SEARCH_PERSONAL":
         print("📚 Searching personal docs and Notion...")
         chunks = search_personal_only(contextualized_query)
         if not is_relevant(contextualized_query, chunks):
             print("⚠️ Nothing relevant found in personal docs.")
-            result = generate(query, [], history, action="personal_not_found")
+            result = generate(query, [], history, action="personal_not_found",memories=memories)
         else:
-            result = generate(query, chunks, history)
+            result = generate(query, chunks, history,memories=memories)
 
     elif action == "SEARCH_WEB":
         print("🌐 Searching web...")
@@ -296,16 +361,16 @@ def run(query: str) -> dict:
            print(f"Source: {chunk.get('source')}")
            print(chunk.get('text', '')[:500])
         if not is_relevant(contextualized_query, chunks):
-            result = generate(query, [], history, action="web_not_found")
+            result = generate(query, [], history, action="web_not_found",memories=memories)
         else:
-            result = generate(query, chunks, history)
+            result = generate(query, chunks, history,memories=memories)
 
     else:  # SEARCH_BOTH
      print("🔍 Searching all sources...")
      chunks = retrieve(contextualized_query)
 
      if is_relevant(contextualized_query, chunks):
-        result = generate(query, chunks, history)
+        result = generate(query, chunks, history,memories=memories)
      else:
         print("⚠️ Personal information is not enough. Searching web...")
         web_urls = web_pipeline(contextualized_query)
@@ -317,12 +382,14 @@ def run(query: str) -> dict:
         combined_chunks = chunks + web_chunks
 
         if combined_chunks:
-            result = generate(query, combined_chunks, history)
+            result = generate(query, combined_chunks, history,memories=memories)
         else:
-            result = generate(query, [], history, action="not_found")
+            result = generate(query, [], history, action="not_found",memories=memories)
 
     # 8. add answer to memory
     memory.add_message("assistant", result["answer"])
+
+    process_memories(memory.get_history())
 
     # 9. print answer + sources
     print("\n💬 Answer:")

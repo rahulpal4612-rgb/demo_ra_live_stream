@@ -36,6 +36,9 @@ Here is the retrieved context for the user's question:
 
 {chunks}
 
+Permanent memories:
+{memories}
+
 Conversation history:
 {history}
 

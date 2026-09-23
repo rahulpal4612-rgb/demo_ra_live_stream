@@ -22,9 +22,6 @@ def fetch(urls: list[str]) -> list[dict]:
 
         try:
             response = requests.get(url, timeout=10, headers=HEADERS)
-            if "wikipedia.org" in url:
-               with open("wikipedia_debug.html", "w", encoding="utf-8") as f:
-                 f.write(response.text)
 
             if response.status_code != 200:
                 print(f" Failed to fetch {url}: status {response.status_code}")
