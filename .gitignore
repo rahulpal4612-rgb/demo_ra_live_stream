@@ -2,8 +2,6 @@
 venv/
 .env
 
-# Store (FAISS index + metadata)
-store/
 
 # Python cache
 __pycache__/
@@ -19,4 +17,3 @@ failures.log
 Thumbs.db
 
 wikipedia_debug.html
-memory.db
