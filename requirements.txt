@@ -14,3 +14,11 @@ python-dotenv
 validators
 notion-client==3.1.0
 groq
+fastapi
+uvicorn
+streamlit
+PyMuPDF
+unstructured[pdf]
+unstructured-inference
+docling
+rank-bm25

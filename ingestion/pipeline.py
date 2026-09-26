@@ -1,10 +1,10 @@
 import os
 import hashlib
-from loaders.base import get_loader
-from chunker import chunk_document
-from embeding import embedder
-from metadata import create_metadata
-from store import upsert_chunks, load_store
+from .loaders.base import get_loader
+from .chunker import chunk_document
+from .embeding import embedder
+from .metadata import create_metadata
+from .store import upsert_chunks, load_store
 
 FAILURES_LOG = "failures.log"
 
@@ -124,17 +124,3 @@ def ingest_folder(folder_path: str):
         print(f"⚠️  See {FAILURES_LOG} for details.")
 
 
-# ─── Entry point ──────────────────────────────────────────────────────────────
-
-if __name__ == "__main__":
-    import sys
-    if len(sys.argv) < 2:
-        print("Usage: python pipeline.py <file_or_folder_path>")
-    else:
-        path = sys.argv[1]
-        if os.path.isdir(path):
-            ingest_folder(path)
-        elif os.path.isfile(path):
-            ingest_document(path)
-        else:
-            print(f"❌ Path not found: {path}")

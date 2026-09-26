@@ -1,11 +1,5 @@
-from ingestion.embeding import embedding_model
-from ingestion.store import search
-import faiss, numpy as np
+from sentence_transformers import CrossEncoder
 
-query = "what is this document about"
-vec = embedding_model.encode([query])[0].tolist()
-results = search(vec, top_k=3)
+model = CrossEncoder("BAAI/bge-reranker-base")
 
-for r in results:
-    print(r["score"], r["text"][:200])
-    print()
+print("Reranker loaded successfully")

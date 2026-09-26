@@ -10,7 +10,7 @@ FAISS_PATH = os.path.join(STORE_DIR, "index.faiss")
 METADATA_PATH = os.path.join(STORE_DIR, "metadata.json")
 TEXTS_PATH = os.path.join(STORE_DIR, "texts.json")
 
-EMBEDDING_DIM = 768  # all-mpnet-base-v2 output dimension
+EMBEDDING_DIM = 768  # mpnet v2 model output dimension
 
 
 # ─── Load / Save ──────────────────────────────────────────────────────────────

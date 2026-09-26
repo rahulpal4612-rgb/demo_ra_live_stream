@@ -35,7 +35,8 @@ def create_metadata(chunk: dict, document: dict) -> dict:
         "section_level": chunk_meta.get("section_level"),
         "token_count": count_tokens(chunk.get("text", "")),
         "ingestion_timestamp": datetime.now().isoformat(),
-        "content_hash": create_hash(chunk.get("text", ""))
+        "content_hash": create_hash(chunk.get("text", "")),
+        "pages": chunk_meta.get("pages", []),
     }
 
     return metadata

@@ -5,6 +5,7 @@ from pypdf import PdfReader
 from pdf2image import convert_from_path
 import pytesseract
 import pikepdf
+from docling.document_converter import DocumentConverter
 
 
 def check_scanned(path, sample_pages=3) -> bool:
@@ -60,6 +61,13 @@ CLEANING_RULES = {
 
 def PDFLoader(document: dict) -> dict:
     path = document.get("file_path")
+    converter = DocumentConverter()
+    result = converter.convert(path)
+    docling_document = result.document
+
+    print("✅ Docling conversion successful")
+    print(type(docling_document))
+
     ignore = document.get("ignore", [])
     reader = PdfReader(path)
 
@@ -78,7 +86,10 @@ def PDFLoader(document: dict) -> dict:
         extraction_method = "ocr"
 
     else:
-        pages_text = [(page.extract_text() or "") for page in reader.pages]
+        pages_text = [
+    page.extract_text(extraction_mode="layout") or ""
+    for page in reader.pages
+]
         extraction_method = "text_layer"
 
     # cross-page cleanup first, since header/footer detection needs the page list
@@ -86,7 +97,7 @@ def PDFLoader(document: dict) -> dict:
         repeated_lines = find_repeated_lines(pages_text)
         pages_text = strip_repeated_lines(pages_text, repeated_lines)
 
-    content = "\n".join(pages_text)
+    content = "\n\n".join(pages_text)
 
     # single-pass regex cleanup on the joined text
     for rule in ("page_numbers", "watermarks"):
@@ -99,4 +110,5 @@ def PDFLoader(document: dict) -> dict:
         "doc_type": "pdf",
         "structure": None,
         "extraction_method": extraction_method,
+        "docling_document": docling_document,
     }
